@@ -11,11 +11,12 @@ using System.ComponentModel.Composition; //<--Need to add a reference to System.
 namespace AuroraLabelItemsPlugin
 {
     [Export(typeof(IPlugin))]
-    public class AuroraLabelItemsPlugin : ILabelPlugin
+    public class AuroraLabelItemsPlugin : ILabelPlugin, IStripPlugin
     {
         /// The name of the custom label item we've added to Labels.xml in the Profile
         const string LABEL_ITEM_LEVEL = "AURORA_LEVEL";
         const string LABEL_ITEM_3DIGIT_GROUNDSPEED = "AURORA_GROUNDSPEED";
+        const string STRIP_ITEM_CALLSIGN = "AURORA_CALLSIGN";
         readonly static CustomColour EastboundColour = new CustomColour(255, 125, 0);
         readonly static CustomColour WestboundColour = new CustomColour(0, 125, 255);
         readonly ConcurrentDictionary<string, bool> eastboundCallsigns = new ConcurrentDictionary<string, bool>();
@@ -95,7 +96,17 @@ namespace AuroraLabelItemsPlugin
                 return null;
 
             //read our dictionary of stored bools (true means is easterly) and return the correct colour
-            if (eastboundCallsigns.TryGetValue(fdr.Callsign, out bool east))
+            return GetDirectionColour(fdr.Callsign);
+        }
+
+        public CustomColour SelectGroundTrackColour(Track track)
+        {
+            return null;
+        }
+
+        private CustomColour GetDirectionColour(string callsign)
+        {
+            if (eastboundCallsigns.TryGetValue(callsign, out bool east))
             {
                 if (east)
                     return EastboundColour;
@@ -106,9 +117,26 @@ namespace AuroraLabelItemsPlugin
             return null;
         }
 
-        public CustomColour SelectGroundTrackColour(Track track)
+        public CustomStripItem GetCustomStripItem(string itemType, Track track, FDP2.FDR flightDataRecord, RDP.RadarTrack radarTrack)
         {
-            return null;
+            if (flightDataRecord is null)
+                return null;
+
+            switch(itemType)
+            {
+                case STRIP_ITEM_CALLSIGN:
+                    var callsignColour = GetDirectionColour(flightDataRecord.Callsign);
+                    return new CustomStripItem()
+                    {
+                        BackColourIdentity = Colours.Identities.StripText,
+                        //only apply East/West colour to jurisdiction state
+                        ForeColourIdentity = track.State != MMI.HMIStates.Jurisdiction ? Colours.Identities.StripBackground : Colours.Identities.Custom,
+                        CustomForeColour = callsignColour,
+                        Text = flightDataRecord.Callsign
+                    };
+                default:
+                    return null;
+            }
         }
     }
 }
