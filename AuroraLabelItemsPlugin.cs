@@ -51,8 +51,8 @@ namespace AuroraLabelItemsPlugin
         readonly ConcurrentDictionary<string, byte> mntflagtoggle = new ConcurrentDictionary<string, byte>();
         readonly ConcurrentDictionary<string, byte> downlink = new ConcurrentDictionary<string, byte>();
         // key: callsign, value: acknowledged status
-        readonly ConcurrentDictionary<string, bool> advisoryConflict = new ConcurrentDictionary<string, bool>();
-        readonly ConcurrentDictionary<string, bool> imminentConflict = new ConcurrentDictionary<string, bool>();
+        readonly ConcurrentDictionary<string, List<string>> advisoryConflict = new ConcurrentDictionary<string, List<string>>();
+        readonly ConcurrentDictionary<string, List<string>> imminentConflict = new ConcurrentDictionary<string, List<string>>();
 
         public AuroraLabelItemsPlugin()
         {
@@ -341,9 +341,6 @@ namespace AuroraLabelItemsPlugin
             int rfl = fdr.RFL;
             int alt = cfl == -1 ? rfl : cfl;
 
-            
-
-
             var isRvsm = fdr.RVSM;
 
             bool clean;
@@ -374,24 +371,58 @@ namespace AuroraLabelItemsPlugin
                     var imminentConflicts = timeDiff.CompareTo(new TimeSpan(0, 0, 30, 0, 0)) < 0; //check if timediff < 30 mins
                     if (advisoryConflicts)                        
                     {
-                        // auto acknowledge
-                        advisoryConflict.AddOrUpdate(fdr.Callsign, true, (k, v) => true);                        
-                    }
-                    if (imminentConflicts)
-                    {
-                        imminentConflict.AddOrUpdate(fdr.Callsign, true, (k, v) => true);
+                        advisoryConflict.AddOrUpdate(fdr2.Callsign, new List<string>(new string[] { fdr.Callsign }),
+                            (k, v) => v.Append(fdr.Callsign).ToList());
+                        advisoryConflict.AddOrUpdate(fdr.Callsign, new List<string>(new string[] { fdr2.Callsign }),
+                            (k, v) => v.Append(fdr2.Callsign).ToList());
                     }
                     else
                     {
-                        advisoryConflict.TryRemove(fdr.Callsign, out clean);
-                        imminentConflict.TryRemove(fdr.Callsign, out clean);
+                        advisoryConflict.AddOrUpdate(fdr.Callsign, new List<string>(),
+                            (k, v) => v.Where(e => e != fdr2.Callsign).ToList());
+                        advisoryConflict.AddOrUpdate(fdr2.Callsign, new List<string>(),
+                            (k, v) => v.Where(e => e != fdr.Callsign).ToList());
                     }
+                    if (imminentConflicts)
+                    {
+                        imminentConflict.AddOrUpdate(fdr.Callsign, new List<string>(new string[] { fdr2.Callsign }),
+                            (k, v) => v.Append(fdr2.Callsign).ToList());
+                        imminentConflict.AddOrUpdate(fdr2.Callsign, new List<string>(new string[] { fdr.Callsign }),
+                            (k, v) => v.Append(fdr.Callsign).ToList());
+                    }
+                    else
+                    {
+                        imminentConflict.AddOrUpdate(fdr2.Callsign, new List<string>(),
+                            (k, v) => v.Where(e => e != fdr.Callsign).ToList());
+                        imminentConflict.AddOrUpdate(fdr.Callsign, new List<string>(),
+                            (k, v) => v.Where(e => e != fdr2.Callsign).ToList());
+                    } 
                 }
-                //else
-                //{
-                //    advisoryConflict.TryRemove(fdr.Callsign, out clean);
-                //    imminentConflict.TryRemove(fdr.Callsign, out clean);
-                //}
+                else
+                {
+                    advisoryConflict.AddOrUpdate(fdr.Callsign, new List<string>(),
+                        (k, v) => v.Where(e => e != fdr2.Callsign).ToList());
+                    advisoryConflict.AddOrUpdate(fdr2.Callsign, new List<string>(),
+                        (k, v) => v.Where(e => e != fdr.Callsign).ToList());
+                    imminentConflict.AddOrUpdate(fdr2.Callsign, new List<string>(),
+                        (k, v) => v.Where(e => e != fdr.Callsign).ToList());
+                    imminentConflict.AddOrUpdate(fdr.Callsign, new List<string>(),
+                        (k, v) => v.Where(e => e != fdr2.Callsign).ToList());
+                }
+            }
+            var emptyAdvisoryConflicts = advisoryConflict.Where(pair => pair.Value.Count == 0)
+                .Select(pair => pair.Key)
+                .ToList();
+            foreach (var callsign in emptyAdvisoryConflicts)
+            {
+                advisoryConflict.TryRemove(callsign, out _);
+            }
+            var emptyImminentConflicts = imminentConflict.Where(pair => pair.Value.Count == 0)
+                .Select(pair => pair.Key)
+                .ToList();
+            foreach (var callsign in emptyImminentConflicts)
+            {
+                imminentConflict.TryRemove(callsign, out _);
             }
         }
 
@@ -748,19 +779,12 @@ namespace AuroraLabelItemsPlugin
             {
                 return GetConflictColour(fdr.Callsign);
             }
-                
 
             //only apply East/West colour to jurisdiction state
-            else if (track.State == MMI.HMIStates.Jurisdiction && GetConflictColour(fdr.Callsign) == null) //read our dictionary of stored bools (true means is easterly) and return the correct colour
+            if (track.State == MMI.HMIStates.Jurisdiction && GetConflictColour(fdr.Callsign) == null) //read our dictionary of stored bools (true means is easterly) and return the correct colour
             {
-                
                 return GetDirectionColour(fdr.Callsign);
             }
-
-
-
-            else
-
             return null;
 
         }
@@ -794,8 +818,7 @@ namespace AuroraLabelItemsPlugin
             {
                 return Imminent;
             }
-
-                return null; 
+            return null; 
         }
     }
 }
