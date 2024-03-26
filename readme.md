@@ -1,3 +1,3 @@
-## Example Custom Label Item Plugin
+# This repository is deprecated
 
-TODO: Explain
+The code for the plugin will be updated here in the future: https://github.com/vzoa/vatsys-atop-plugin
